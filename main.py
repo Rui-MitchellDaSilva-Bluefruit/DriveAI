@@ -8,7 +8,7 @@ SCREEN_WIDTH = 1244
 SCREEN_HEIGHT = 1016
 SCREEN = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 
-MAX_SPEED = 20
+MAX_SPEED = 10
 MAX_LIFETIME = 1000
 MAX_SENSOR_LENGTH = 1000
 
@@ -26,14 +26,12 @@ class Car(pygame.sprite.Sprite):
         self.direction = 0
         self.alive = True
         self.radars = []
-        ###### NEW
         self.laps = 0
         self.passed_finish_line = False
         self.passed_halfway_point = False
         self.current_speed = 0
         self.acceleration = 0
         self.lifetime = MAX_LIFETIME
-        ######
 
     def update(self):
         self.radars.clear()
@@ -44,7 +42,6 @@ class Car(pygame.sprite.Sprite):
         self.collision()
         self.data()
         self.check_race_position()
-        # NEW
         self.lifetime -= 1
         if self.lifetime <= 0:
             self.alive = False
@@ -75,16 +72,14 @@ class Car(pygame.sprite.Sprite):
 
     def collision(self):
         length = 40
-        collision_point_right = self.adjust_pos_against_bounds([int(self.rect.center[0] + math.cos(math.radians(self.angle + 18)) * length),
+        collision_point_right_front = self.adjust_pos_against_bounds([int(self.rect.center[0] + math.cos(math.radians(self.angle + 18)) * length),
                                  int(self.rect.center[1] - math.sin(math.radians(self.angle + 18)) * length)])
-        collision_point_left = self.adjust_pos_against_bounds([int(self.rect.center[0] + math.cos(math.radians(self.angle - 18)) * length),
+        collision_point_left_front = self.adjust_pos_against_bounds([int(self.rect.center[0] + math.cos(math.radians(self.angle - 18)) * length),
                                 int(self.rect.center[1] - math.sin(math.radians(self.angle - 18)) * length)])
-
-        ###### NEW
-        collision_point_right_two = self.adjust_pos_against_bounds([int(self.rect.center[0] + math.cos(math.radians(self.angle + 90)) * 20),
+        collision_point_right_side = self.adjust_pos_against_bounds([int(self.rect.center[0] + math.cos(math.radians(self.angle + 90)) * 20),
                                      int(self.rect.center[1] - math.sin(math.radians(self.angle + 90)) * 20)])
 
-        collision_point_left_two = self.adjust_pos_against_bounds([int(self.rect.center[0] + math.cos(math.radians(self.angle - 90)) * 20),
+        collision_point_left_side = self.adjust_pos_against_bounds([int(self.rect.center[0] + math.cos(math.radians(self.angle - 90)) * 20),
                                      int(self.rect.center[1] - math.sin(math.radians(self.angle - 90)) * 20)])
 
         collision_point_right_rear = self.adjust_pos_against_bounds([int(self.rect.center[0] + math.cos(math.radians(self.angle - 160)) * length),
@@ -93,27 +88,24 @@ class Car(pygame.sprite.Sprite):
         collision_point_left_rear = self.adjust_pos_against_bounds([int(self.rect.center[0] + math.cos(math.radians(self.angle + 160)) * length),
                                      int(self.rect.center[1] - math.sin(math.radians(self.angle + 160)) * length)])
 
-        # Die on Collision ###### NEW
-        if SCREEN.get_at(collision_point_right) == pygame.Color(2, 105, 31, 255) \
-                or SCREEN.get_at(collision_point_left) == pygame.Color(2, 105, 31, 255) \
-                    or SCREEN.get_at(collision_point_right_two) == pygame.Color(2, 105, 31, 255) \
-                        or SCREEN.get_at(collision_point_left_two) == pygame.Color(2, 105, 31, 255) \
+        # Die on Collision
+        if SCREEN.get_at(collision_point_right_front) == pygame.Color(2, 105, 31, 255) \
+                or SCREEN.get_at(collision_point_left_front) == pygame.Color(2, 105, 31, 255) \
+                    or SCREEN.get_at(collision_point_right_side) == pygame.Color(2, 105, 31, 255) \
+                        or SCREEN.get_at(collision_point_left_side) == pygame.Color(2, 105, 31, 255) \
                             or SCREEN.get_at(collision_point_right_rear) == pygame.Color(2, 105, 31, 255) \
                                 or SCREEN.get_at(collision_point_left_rear) == pygame.Color(2, 105, 31, 255):
             self.alive = False
-        ######
 
         # Draw Collision Points
-        pygame.draw.circle(SCREEN, (0, 255, 255, 0), collision_point_right, 4)
-        pygame.draw.circle(SCREEN, (0, 255, 255, 0), collision_point_left, 4)
+        pygame.draw.circle(SCREEN, (0, 255, 255, 0), collision_point_right_front, 4)
+        pygame.draw.circle(SCREEN, (0, 255, 255, 0), collision_point_left_front, 4)
 
-        ###### NEW
-        pygame.draw.circle(SCREEN, (0, 255, 255, 0), collision_point_right_two, 4)
-        pygame.draw.circle(SCREEN, (0, 255, 255, 0), collision_point_left_two, 4)
+        pygame.draw.circle(SCREEN, (0, 255, 255, 0), collision_point_right_side, 4)
+        pygame.draw.circle(SCREEN, (0, 255, 255, 0), collision_point_left_side, 4)
 
         pygame.draw.circle(SCREEN, (0, 255, 255, 0), collision_point_right_rear, 4)
         pygame.draw.circle(SCREEN, (0, 255, 255, 0), collision_point_left_rear, 4)
-        ######
 
     def rotate(self):
         if self.direction == 1:
@@ -203,14 +195,12 @@ def eval_genomes(genomes, config):
 
         for i, car in enumerate(cars):
             ge[i].fitness += 0
-            # NEW #######
             if car.sprite.passed_finish_line == True:
                 car.sprite.laps += 1
-                ge[i].fitness += 1000 # TODO: Divide by time elapsed
+                ge[i].fitness += 1000
                 car.sprite.passed_finish_line = False
             if car.sprite.laps >= 2:
                 car.sprite.alive = False
-            #############
             if not car.sprite.alive:
                 remove(i)
 
@@ -222,10 +212,7 @@ def eval_genomes(genomes, config):
                 car.sprite.direction = -1
             if output[0] <= 0.7 and output[1] <= 0.7:
                 car.sprite.direction = 0
-            # New ############
             car.sprite.acceleration = output[0] + output[1]
-            #ge[i].fitness += car.sprite.acceleration
-            ##################
 
         # Update
         for car in cars:
