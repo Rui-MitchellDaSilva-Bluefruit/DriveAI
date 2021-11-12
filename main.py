@@ -1,8 +1,16 @@
+# TODO
+# - Create at least 3 new maps and one "tournament race" map.
+# - Add more Genetic Algorithm Options.
+# - Create standalone racing mode that compares multiple NEAT models and races them i.e. Demo Mode.
+# - Make tracks selectable
+
+from random import randint, random
 import pygame
 import os
 import math
 import sys
 import neat
+import argparse
 
 SCREEN_WIDTH = 1244
 SCREEN_HEIGHT = 1016
@@ -10,14 +18,17 @@ SCREEN = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 
 MAX_SPEED = 10
 MAX_LIFETIME = 1000
-MAX_SENSOR_LENGTH = 1000
+MAX_SENSOR_LENGTH = 200
 
-TRACK = pygame.image.load(os.path.join("Assets", "track.png"))
+TRACK = pygame.image.load(os.path.join("Assets", "wiggly_track.png"))
 
 class Car(pygame.sprite.Sprite):
     def __init__(self):
         super().__init__()
-        self.original_image = pygame.image.load(os.path.join("Assets", "car.png"))
+
+        random_car_colour = self.get_random_car_image_filepath()
+
+        self.original_image = pygame.image.load(os.path.join("Assets", random_car_colour))
         self.image = self.original_image
         self.rect = self.image.get_rect(center=(490, 820))
         self.vel_vector = pygame.math.Vector2(0.8, 0)
@@ -32,6 +43,24 @@ class Car(pygame.sprite.Sprite):
         self.current_speed = 0
         self.acceleration = 0
         self.lifetime = MAX_LIFETIME
+
+    # TODO: Refactor
+    def get_random_car_image_filepath(self):
+        random_int = randint(0, 6)
+        if random_int == 0:
+            return "car.png"
+        elif random_int == 1:
+            return "yellow_car.png"
+        elif random_int == 2:
+            return "blue_car.png"
+        elif random_int == 3:
+            return "green_car.png"
+        elif random_int == 4:
+            return "pink_car.png"
+        elif random_int == 5:
+            return "purple_car.png"
+        
+        return "car.png"
 
     def update(self):
         self.radars.clear()
@@ -213,6 +242,7 @@ def eval_genomes(genomes, config):
             if output[0] <= 0.7 and output[1] <= 0.7:
                 car.sprite.direction = 0
             car.sprite.acceleration = output[0] + output[1]
+            ge[i].fitness += car.sprite.acceleration / 1000
 
         # Update
         for car in cars:
@@ -220,9 +250,8 @@ def eval_genomes(genomes, config):
             car.update()
         pygame.display.update()
 
-
 # Setup NEAT Neural Network
-def run(config_path):
+def run(config_path, args):
     global pop
     config = neat.config.Config(
         neat.DefaultGenome,
@@ -232,15 +261,34 @@ def run(config_path):
         config_path
     )
 
-    pop = neat.Population(config)
-
+    if args.reload_model:
+        pop = neat.Checkpointer.restore_checkpoint(args.reload_model)
+        print(f"Model Loaded: {args.reload_model}")
+    else:
+        pop = neat.Population(config)
+    
     pop.add_reporter(neat.StdOutReporter(True))
     stats = neat.StatisticsReporter()
     pop.add_reporter(stats)
+    pop.add_reporter(neat.Checkpointer(args.checkpoint, filename_prefix=args.model_name+'-'))
 
-    pop.run(eval_genomes, 1000)
+    pop.run(eval_genomes, args.total_generations)
+    #print(f"Loading model")
 
-if __name__ == '__main__':
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--model_name', type=str, default="NEAT_Checkpoint",
+        help="Set name of the checkpoint for the autosave.")
+    parser.add_argument('--reload_model', type=str,
+        help="Load a previously saved model.")
+    parser.add_argument('--checkpoint', type=int, default=5)
+    parser.add_argument('--total_generations', type=int, default=100)
+    args = parser.parse_args(sys.argv[1:])
+
     local_dir = os.path.dirname(__file__)
     config_path = os.path.join(local_dir, 'config.txt')
-    run(config_path)
+    run(config_path, args)
+
+if __name__ == '__main__':
+    main()
