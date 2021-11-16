@@ -1,8 +1,3 @@
-# TODO
-# - Add more Genetic Algorithm Options.
-# - Create standalone racing mode that compares multiple NEAT models and races them i.e. Demo Mode.
-# - Make tracks selectable
-
 from random import randint, random
 import pygame
 import os
@@ -16,10 +11,10 @@ SCREEN_HEIGHT = 1016
 SCREEN = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 
 MAX_SPEED = 10
-MAX_LIFETIME = 1500
+MAX_LIFETIME = 1000
 MAX_SENSOR_LENGTH = 200
 
-TRACK = pygame.image.load(os.path.join("Assets", "wiggly_track.png"))
+TRACK = pygame.image.load(os.path.join("Assets", "grand_prix.png"))
 
 class Car(pygame.sprite.Sprite):
     def __init__(self):
@@ -150,16 +145,6 @@ class Car(pygame.sprite.Sprite):
         length = 0
         x = int(self.rect.center[0])
         y = int(self.rect.center[1])
-  
-        if x >= SCREEN_WIDTH:
-            x = SCREEN_WIDTH - 1
-        elif x < 0:
-            x = 0
-
-        if y >= SCREEN_HEIGHT:
-            y = SCREEN_HEIGHT - 1
-        elif y < 0:
-            y = 0
         
         # TODO: Allow for longer sensors/more sensors
         while not SCREEN.get_at((x, y)) == pygame.Color(2, 105, 31, 255) and length < MAX_SENSOR_LENGTH:
@@ -199,28 +184,27 @@ class Car(pygame.sprite.Sprite):
             self.passed_halfway_point = False
             self.passed_finish_line = True
 
-def remove(index):
-    cars.pop(index)
-    ge.pop(index)
-    nets.pop(index)
-
-
 def eval_genomes(genomes, config):
-    global cars, ge, nets
+    global car, net
 
-    cars = []
-    ge = []
-    nets = []
+    # TODO: Find way of getting best genome.
+    # best_genome_id = -1
+    # best_fitness = 0
+    # for genome_id, genome in genomes:
+    #     if genome.fitness > best_fitness:
+    #         best_fitness = genome.fitness
+    #         best_genome_id = genome_id
 
-    for genome_id, genome in genomes:
-        cars.append(pygame.sprite.GroupSingle(Car()))
-        ge.append(genome)
-        net = neat.nn.FeedForwardNetwork.create(genome, config)
-        nets.append(net)
-        genome.fitness = 0
+    # if best_genome_id == -1:
+    #     return
+
+    random_index = randint(0, len(genomes))
+
+    car = pygame.sprite.GroupSingle(Car())
+    net = neat.nn.FeedForwardNetwork.create(genomes[random_index][1], config)
 
     run = True
-    while run:
+    while car.sprite.alive:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -228,70 +212,49 @@ def eval_genomes(genomes, config):
 
         SCREEN.blit(TRACK, (0, 0))
 
-        if len(cars) == 0:
-            break
-
-        for i, car in enumerate(cars):
-            ge[i].fitness += 0
-            if car.sprite.passed_finish_line == True:
-                car.sprite.laps += 1
-                ge[i].fitness += 1000
-                car.sprite.passed_finish_line = False
-            if car.sprite.laps >= 2:
-                car.sprite.alive = False
-            if not car.sprite.alive:
-                remove(i)
-
-        for i, car in enumerate(cars):
-            output = nets[i].activate(car.sprite.data())
-            if output[0] > 0.7:
-                car.sprite.direction = 1
-            if output[1] > 0.7:
-                car.sprite.direction = -1
-            if output[0] <= 0.7 and output[1] <= 0.7:
-                car.sprite.direction = 0
-            car.sprite.acceleration = output[0] + output[1]
-            ge[i].fitness += car.sprite.acceleration / 100
+        if car.sprite.passed_finish_line == True:
+            car.sprite.laps += 1
+            car.sprite.passed_finish_line = False
+        if car.sprite.laps >= 2:
+            car.sprite.alive = False
+            
+        output = net.activate(car.sprite.data())
+        if output[0] > 0.7:
+            car.sprite.direction = 1
+        if output[1] > 0.7:
+            car.sprite.direction = -1
+        if output[0] <= 0.7 and output[1] <= 0.7:
+            car.sprite.direction = 0
+        car.sprite.acceleration = output[0] + output[1]
 
         # Update
-        for car in cars:
-            car.draw(SCREEN)
-            car.update()
+        car.draw(SCREEN)
+        car.update()
         pygame.display.update()
 
 # Setup NEAT Neural Network
 def run(config_path, args):
     global pop
-    config = neat.config.Config(
-        neat.DefaultGenome,
-        neat.DefaultReproduction,
-        neat.DefaultSpeciesSet,
-        neat.DefaultStagnation,
-        config_path
-    )
+    #models = open(args.model_list)
+    models = [
+        #"models/neat-checkpoint-84",
+        #"models/wiggly_checkpoint-119",
+        "models/hundred_genomes-855"
+    ]
 
-    if args.reload_model:
-        pop = neat.Checkpointer.restore_checkpoint(args.reload_model)
-        print(f"Model Loaded: {args.reload_model}")
-    else:
-        pop = neat.Population(config)
-    
-    pop.add_reporter(neat.StdOutReporter(True))
-    stats = neat.StatisticsReporter()
-    pop.add_reporter(stats)
-    pop.add_reporter(neat.Checkpointer(args.checkpoint, filename_prefix=args.model_name+'-'))
-
-    pop.run(eval_genomes, args.total_generations)
-    #print(f"Loading model")
+    for model in models:
+        pop = neat.Checkpointer.restore_checkpoint(model)
+        print(f"Model Loaded: {model}")
+        #pop.add_reporter(neat.StdOutReporter(True))
+        #stats = neat.StatisticsReporter()
+        #pop.add_reporter(stats)
+        pop.run(eval_genomes, 1)
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model_name', type=str, default="NEAT_Checkpoint",
-        help="Set name of the checkpoint for the autosave.")
-    parser.add_argument('--reload_model', type=str,
-        help="Load a previously saved model.")
-    parser.add_argument('--checkpoint', type=int, default=5)
-    parser.add_argument('--total_generations', type=int, default=100)
+    parser.add_argument('--model_list', type=str, default="model.txt",
+        help="A .txt file with all models to be used in this demo.")
+
     args = parser.parse_args(sys.argv[1:])
 
     local_dir = os.path.dirname(__file__)
