@@ -10,6 +10,12 @@ import math
 import sys
 import neat
 import argparse
+import gzip
+import pickle
+import re
+import glob
+
+from pygame import time
 
 SCREEN_WIDTH = 1244
 SCREEN_HEIGHT = 1016
@@ -19,7 +25,7 @@ MAX_SPEED = 10
 MAX_LIFETIME = 1500
 MAX_SENSOR_LENGTH = 200
 
-TRACK = pygame.image.load(os.path.join("Assets", "wiggly_track.png"))
+TRACK = pygame.image.load(os.path.join("Assets", "l_shape.png"))
 
 class Car(pygame.sprite.Sprite):
     def __init__(self):
@@ -204,6 +210,15 @@ def remove(index):
     ge.pop(index)
     nets.pop(index)
 
+def save_neural_net(name, net):
+    # current_time = datetime.date(datetime.now())
+    # filename = '{0}_{1}'.format(name, current_time)
+    filename = '{0}_NN'.format(name)
+    print("Saving neural net to {0}".format(filename))
+
+    with gzip.open(filename, 'w', compresslevel=5) as f:
+        data = net
+        pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
 
 def eval_genomes(genomes, config):
     global cars, ge, nets
@@ -271,8 +286,24 @@ def run(config_path, args):
     )
 
     if args.reload_model:
-        pop = neat.Checkpointer.restore_checkpoint(args.reload_model)
-        print(f"Model Loaded: {args.reload_model}")
+        has_number_postfix = re.search(r'-\d^', args.reload_model)
+
+        if has_number_postfix != None:
+            pop = neat.Checkpointer.restore_checkpoint(args.reload_model)
+            print(f"Model Loaded: {args.reload_model}")
+        else:
+            most_recent_checkpoint = None
+            most_recent_checkpoint_number = 0
+            for name in glob.glob(f'{args.reload_model}-*'):
+                checkpoint_number = re.split(r'-', name)[1:]
+                if int(checkpoint_number[0]) > most_recent_checkpoint_number:
+                    most_recent_checkpoint_number = int(checkpoint_number[0])
+                    most_recent_checkpoint = name
+
+            pop = neat.Checkpointer.restore_checkpoint(most_recent_checkpoint)
+            print(f"Model Loaded: {most_recent_checkpoint}")
+            # TODO: Add exception for missing file.
+            
     else:
         pop = neat.Population(config)
     
@@ -281,8 +312,10 @@ def run(config_path, args):
     pop.add_reporter(stats)
     pop.add_reporter(neat.Checkpointer(args.checkpoint, filename_prefix=args.model_name+'-'))
 
-    pop.run(eval_genomes, args.total_generations)
-    #print(f"Loading model")
+    winner = pop.run(eval_genomes, args.total_generations)
+    winner_net = neat.nn.FeedForwardNetwork.create(winner, config)
+    print(f"{winner}")
+    save_neural_net(args.model_name, winner_net)
 
 def main():
     parser = argparse.ArgumentParser()

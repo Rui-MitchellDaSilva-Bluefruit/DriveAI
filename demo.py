@@ -1,3 +1,5 @@
+
+#TODO: Clean code
 from random import randint, random
 import pygame
 import os
@@ -5,6 +7,8 @@ import math
 import sys
 import neat
 import argparse
+import gzip
+import pickle
 
 SCREEN_WIDTH = 1244
 SCREEN_HEIGHT = 1016
@@ -17,12 +21,12 @@ MAX_SENSOR_LENGTH = 200
 TRACK = pygame.image.load(os.path.join("Assets", "grand_prix.png"))
 
 class Car(pygame.sprite.Sprite):
-    def __init__(self):
+    def __init__(self, image):
         super().__init__()
 
-        random_car_colour = self.get_random_car_image_filepath()
+        #random_car_colour = self.get_random_car_image_filepath()
 
-        self.original_image = pygame.image.load(os.path.join("Assets", random_car_colour))
+        self.original_image = pygame.image.load(os.path.join("Assets", image))
         self.image = self.original_image
         self.rect = self.image.get_rect(center=(490, 820))
         self.vel_vector = pygame.math.Vector2(0.8, 0)
@@ -145,6 +149,16 @@ class Car(pygame.sprite.Sprite):
         length = 0
         x = int(self.rect.center[0])
         y = int(self.rect.center[1])
+
+        if x >= SCREEN_WIDTH:
+            x = SCREEN_WIDTH - 1
+        elif x < 0:
+            x = 0
+
+        if y >= SCREEN_HEIGHT:
+            y = SCREEN_HEIGHT - 1
+        elif y < 0:
+                y = 0
         
         # TODO: Allow for longer sensors/more sensors
         while not SCREEN.get_at((x, y)) == pygame.Color(2, 105, 31, 255) and length < MAX_SENSOR_LENGTH:
@@ -185,26 +199,21 @@ class Car(pygame.sprite.Sprite):
             self.passed_finish_line = True
 
 def eval_genomes(genomes, config):
-    global car, net
+    global cars, ge, nets
 
-    # TODO: Find way of getting best genome.
-    # best_genome_id = -1
-    # best_fitness = 0
-    # for genome_id, genome in genomes:
-    #     if genome.fitness > best_fitness:
-    #         best_fitness = genome.fitness
-    #         best_genome_id = genome_id
+    cars = []
+    ge = []
+    nets = []
 
-    # if best_genome_id == -1:
-    #     return
-
-    random_index = randint(0, len(genomes))
-
-    car = pygame.sprite.GroupSingle(Car())
-    net = neat.nn.FeedForwardNetwork.create(genomes[random_index][1], config)
+    for genome_id, genome in genomes:
+        cars.append(pygame.sprite.GroupSingle(Car()))
+        ge.append(genome)
+        net = neat.nn.FeedForwardNetwork.create(genome, config)
+        nets.append(net)
+        genome.fitness = 0
 
     run = True
-    while car.sprite.alive:
+    while run:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
@@ -212,43 +221,142 @@ def eval_genomes(genomes, config):
 
         SCREEN.blit(TRACK, (0, 0))
 
-        if car.sprite.passed_finish_line == True:
-            car.sprite.laps += 1
-            car.sprite.passed_finish_line = False
-        if car.sprite.laps >= 2:
-            car.sprite.alive = False
-            
-        output = net.activate(car.sprite.data())
-        if output[0] > 0.7:
-            car.sprite.direction = 1
-        if output[1] > 0.7:
-            car.sprite.direction = -1
-        if output[0] <= 0.7 and output[1] <= 0.7:
-            car.sprite.direction = 0
-        car.sprite.acceleration = output[0] + output[1]
+        if len(cars) == 0:
+            break
+
+        for i, car in enumerate(cars):
+            ge[i].fitness += 0
+            if car.sprite.passed_finish_line == True:
+                car.sprite.laps += 1
+                ge[i].fitness += 1000
+                car.sprite.passed_finish_line = False
+            if car.sprite.laps >= 2:
+                car.sprite.alive = False
+            if not car.sprite.alive:
+                remove(i)
+
+        for i, car in enumerate(cars):
+            output = nets[i].activate(car.sprite.data())
+            if output[0] > 0.7:
+                car.sprite.direction = 1
+            if output[1] > 0.7:
+                car.sprite.direction = -1
+            if output[0] <= 0.7 and output[1] <= 0.7:
+                car.sprite.direction = 0
+            car.sprite.acceleration = output[0] + output[1]
+            ge[i].fitness += car.sprite.acceleration / 100
 
         # Update
-        car.draw(SCREEN)
-        car.update()
+        for car in cars:
+            car.draw(SCREEN)
+            car.update()
         pygame.display.update()
+
+
+def run_simulation(models):
+    global cars, nets, titles
+    nets = []
+    cars = []
+    titles = []
+
+    pygame.font.init()
+    myfont = pygame.font.SysFont('Comic Sans MS', 20)
+
+    for model, car in models:
+        nets.append(restore_neural_net(model))
+        cars.append(pygame.sprite.GroupSingle(Car(car)))
+
+        if car == "yellow_car.png":
+            titles.append(myfont.render(f"{model}", False, (125, 175, 175)))
+        elif car == "green_car.png":
+            titles.append(myfont.render(f"{model}", False, (125, 175, 125)))
+        elif car == "blue_car.png":
+            titles.append(myfont.render(f"{model}", False, (125, 125, 175)))
+        elif car == "pink_car.png":
+            titles.append(myfont.render(f"{model}", False, (130, 125, 125)))
+        else:
+            titles.append(myfont.render(f"{model}", False, (175, 125, 125)))
+
+    run = True
+    while run:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+
+        SCREEN.blit(TRACK, (0, 0))
+
+        if len(cars) == 0:
+            break
+
+        for i, car in enumerate(cars):
+            if car.sprite.passed_finish_line == True:
+                car.sprite.laps += 1
+                car.sprite.passed_finish_line = False
+            if car.sprite.laps >= 2:
+                car.sprite.alive = False
+            if not car.sprite.alive:
+                remove(i)
+
+        for i, car in enumerate(cars):
+            output = nets[i].activate(car.sprite.data())
+            if output[0] > 0.7:
+                car.sprite.direction = 1
+            if output[1] > 0.7:
+                car.sprite.direction = -1
+            if output[0] <= 0.7 and output[1] <= 0.7:
+                car.sprite.direction = 0
+            car.sprite.acceleration = output[0] + output[1]
+
+        # Update
+        for i, car in enumerate(cars):
+            car.draw(SCREEN)
+            SCREEN.blit(titles[i], (car.sprite.rect.center[0] - 10, car.sprite.rect.center[1]))
+            car.update()
+        pygame.display.update()
+
+def remove(index):
+    cars.pop(index)
+    nets.pop(index)
+    titles.pop(index)
 
 # Setup NEAT Neural Network
 def run(config_path, args):
     global pop
     #models = open(args.model_list)
     models = [
-        #"models/neat-checkpoint-84",
-        #"models/wiggly_checkpoint-119",
-        "models/hundred_genomes-855"
+        ("models/climb_NN", "blue_car.png"),
+        ("models/sqr_NN", "yellow_car.png"),
+        ("models/wiggly_NN", "green_car.png"),
+        ("models/regular_track__plus_wiggly_NN", "car.png"),
+        ("models/regular_track_NN", "pink_car.png"),
     ]
 
-    for model in models:
-        pop = neat.Checkpointer.restore_checkpoint(model)
-        print(f"Model Loaded: {model}")
-        #pop.add_reporter(neat.StdOutReporter(True))
-        #stats = neat.StatisticsReporter()
-        #pop.add_reporter(stats)
-        pop.run(eval_genomes, 1)
+    # config = neat.config.Config(
+    #     neat.DefaultGenome,
+    #     neat.DefaultReproduction,
+    #     neat.DefaultSpeciesSet,
+    #     neat.DefaultStagnation,
+    #     config_path
+    # )
+
+    # for model in models:
+    #     pop = neat.Checkpointer.restore_checkpoint(model)
+    #     print(f"Model Loaded: {model}")
+    #     #pop.add_reporter(neat.StdOutReporter(True))
+    #     #stats = neat.StatisticsReporter()
+    #     #pop.add_reporter(stats)
+    #     winner = pop.run(eval_genomes, 1)
+    #     winner_net = neat.nn.FeedForwardNetwork.create(winner, config)
+    #     run_simulation(winner_net)
+
+    run_simulation(models)
+    
+
+def restore_neural_net(filename):
+    with gzip.open(filename) as f:
+        nn = pickle.load(f)
+        return nn
 
 def main():
     parser = argparse.ArgumentParser()
